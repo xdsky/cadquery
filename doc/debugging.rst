@@ -3,14 +3,25 @@
 Debugging CadQuery Models
 =========================
 
-A CadQuery model is written as a chain of operations. This makes the code compact, but it also means that a failure can appear far away from its cause: an error raised by ``chamfer`` may actually come from a selector that returned the wrong edges several steps earlier.
+CadQuery can be used at three levels: the fluent API (:class:`~cadquery.Workplane`
+and :class:`~cadquery.Sketch` method chains), the free function API
+(:class:`~cadquery.Shape` and the functions in :mod:`cadquery.func`), and the
+OCCT API exposed through OCP. The techniques below apply to all three, although
+some of them are only relevant when working with the fluent API.
+
+A failure can appear far away from its cause: in the fluent API an error raised
+by ``chamfer`` may actually come from a selector that returned the wrong edges
+several steps earlier, and in the free function API a shape can be silently
+invalid without any exception being raised.
 
 The techniques below make such problems easier to find.
 
 Split the chain
 ---------------
 
-The simplest technique is to break the chain into smaller steps, so that an exception points at the step that actually failed. For example:
+When using the fluent API, the simplest technique is to break the chain into
+smaller steps, so that an exception points at the step that actually failed.
+For example:
 
 .. code-block:: python
 
@@ -30,6 +41,26 @@ can be rewritten as:
     top = base.faces(">Z")
     edges = top.edges()
     result = edges.chamfer(0.1)
+
+Inspect the chain without breaking it
+-------------------------------------
+
+:py:meth:`cadquery.Workplane.invoke` and :py:meth:`cadquery.Sketch.invoke`
+execute a callable in the middle of a chain and return the current object,
+unless the callable returns a new one. This makes it possible to print
+intermediate results, or to enter the debugger, without rewriting the chain:
+
+.. code-block:: python
+
+    result = (
+        cq.Workplane("XY")
+        .box(2, 2, 2)
+        .faces(">Z")
+        .invoke(lambda w: print(w.size()))   # how many faces were selected?
+        .edges()
+        .invoke(breakpoint)                  # callables without arguments are supported
+        .chamfer(0.1)
+    )
 
 Inspect the selection
 ---------------------
@@ -81,20 +112,37 @@ The result of an operation can also be checked directly, without exporting or di
 
 ``isValid()`` runs the OCCT ``BRepCheck_Analyzer`` on the shape and all of its sub-shapes, and is a quick way to detect a model that is geometrically broken even though no exception was raised. ``Volume()`` and ``BoundingBox()`` are useful to confirm that the result has the expected size and position.
 
-Export intermediate results
----------------------------
+Visualize intermediate results
+------------------------------
 
-Another useful technique is to export the intermediate shapes and open them in an external CAD viewer, so that each step of the chain can be inspected visually:
+Since version 2.4 CadQuery can display objects itself, so intermediate results do
+not have to be exported and opened in an external viewer. :meth:`cadquery.vis.show`
+accepts :class:`~cadquery.Workplane`, :class:`~cadquery.Sketch`,
+:class:`~cadquery.Assembly`, :class:`~cadquery.Shape` and lists thereof, as well
+as :class:`~cadquery.Vector` and :class:`~cadquery.Location` objects. The latter
+are useful to display selections or the locations generated along a curve:
 
 .. code-block:: python
 
+    from cadquery.vis import show
+
     base = cq.Workplane("XY").box(2, 2, 2)
-    base.export("step1.step")
+    edges = base.faces(">Z").edges()
 
-    base = base.faces(">Z").workplane().hole(1)
-    base.export("step2.step")
+    show(base, edges, alpha=0.5)
 
-The available exporters are described in :ref:`importexport`, and the possibilities for displaying objects in a notebook or in a GUI are described in :ref:`vis`.
+.. code-block:: python
+
+    from cadquery.func import circle
+
+    c = circle(1)
+
+    # show the curve together with locations along it
+    show(c, c.locations([0.1, 0.5, 0.9]))
+
+The available visualization facilities are described in :ref:`vis`. When working
+in a Python REPL or in IPython, :meth:`cadquery.fig.show` is more convenient
+because it is non-blocking.
 
 Getting help
 ------------
