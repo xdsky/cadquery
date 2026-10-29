@@ -127,9 +127,9 @@ are useful to display selections or the locations generated along a curve:
     from cadquery.vis import show
 
     base = cq.Workplane("XY").box(2, 2, 2)
-    edges = base.faces(">Z").edges()
+    top_edges = base.faces(">Z").edges()
 
-    show(base, edges, alpha=0.5)
+    show(base, top_edges, alpha=0.5)
 
 .. code-block:: python
 
